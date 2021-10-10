@@ -15,11 +15,7 @@
         "silverstripe/framework": "^4.8",
         "silvershop/silverstripe-hasonefield": "^3.0.0",
         "bummzack/sortablefile": "^2.0",
-        "silverstripe/blog": "^3.5.0"
-    },
-    "extra": {
-        "expose": [
-            "client/img"
-        ]
+        "silverstripe/blog": "^3.5.0",
+        "benmanu/silverstripe-leafletfield": "^2.0.0"
     }
 }

@@ -1,6 +1,3 @@
 ---
 Name: 'citanz-event'
 ---
-SilverStripe\Security\Member:
-  extensions:
-    - Cita\Event\Extension\MemberExtension

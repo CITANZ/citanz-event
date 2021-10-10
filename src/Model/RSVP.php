@@ -1,9 +1,10 @@
 <?php
 
 namespace Cita\Event\Model;
-use SilverStripe\Security\Member;
+
 use SilverStripe\ORM\DataObject;
-use Cita\Event\Layout\EventPage;
+use Cita\Event\Page\Event;
+use Ramsey\Uuid\Uuid;
 
 /**
  * Description
@@ -39,6 +40,14 @@ class RSVP extends DataObject
         ]
     ];
 
+    public function populateDefaults()
+    {
+        parent::populateDefaults();
+
+        $uuid = Uuid::uuid4();
+        $this->QRToken = 'rsvp:' . $uuid->toString();
+    }
+
     /**
      * Defines a default list of filters for the search context
      * @var array
@@ -51,7 +60,7 @@ class RSVP extends DataObject
      * Default sort ordering
      * @var array
      */
-    private static $default_sort = ['Created' => 'DESC', 'ID' => 'DESC'];
+    private static $default_sort = ['Created' => 'DESC'];
 
     /**
      * Defines summary fields commonly used in table columns
@@ -60,7 +69,6 @@ class RSVP extends DataObject
      */
     private static $summary_fields = [
         'Email'         =>  'Email',
-        'isMember'      =>  'is Member?',
         'NumGuests'     =>  'Number of Guests'
     ];
 
@@ -69,8 +77,7 @@ class RSVP extends DataObject
      * @var array
      */
     private static $has_one = [
-        'Event'     =>  EventPage::class,
-        'Member'    =>  Member::class
+        'Event' => Event::class,
     ];
 
     public function validate()
@@ -82,7 +89,7 @@ class RSVP extends DataObject
             return $validator;
         }
 
-        if (empty($this->Email) && !$this->Member()->exists() && !Member::currentUser()) {
+        if (empty($this->Email)) {
             $validator->addError('You need to provide your email address!');
             return $validator;
         }
@@ -98,7 +105,6 @@ class RSVP extends DataObject
         }
 
         if ($this->Event()->AllowGuests) {
-
             if (!empty($this->Event()->MaxGuests)) {
                 if ($this->NumGuests > $this->Event()->MaxGuests) {
                     $validator->addError('You cannot bring more than ' . $this->Event()->MaxGuests . ' guests!');
@@ -114,7 +120,7 @@ class RSVP extends DataObject
             }
         }
 
-        $attend_at  =   gettype($this->AttendedAt) == 'integer' ? $this->AttendedAt : strtotime($this->AttendedAt);
+        $attend_at  =   is_int($this->AttendedAt) ? $this->AttendedAt : strtotime($this->AttendedAt);
 
         if (strtotime($this->Event()->EventStart) > $attend_at) {
             $validator->addError('The event has not yet started!');
@@ -124,11 +130,6 @@ class RSVP extends DataObject
         return $validator;
     }
 
-    public function isMember()
-    {
-        return $this->Member()->exists() ? 'Yes' : 'No';
-    }
-
     /**
      * Event handler called before writing to the database.
      */
@@ -136,28 +137,18 @@ class RSVP extends DataObject
     {
         parent::onBeforeWrite();
 
-        if (!empty($this->Email) && !$this->Member()->exists()) {
-            if ($member = Member::get()->filter(['Email' => $this->Email])->first()) {
-                $this->MemberID =   $member->ID;
-            }
-        } elseif ($this->Member()->exists() && empty($this->Email)) {
-            $this->Email    =   $this->Member()->Email;
-        }
-
         if (empty($this->QRToken)) {
-            $this->QRToken  =   'rsvp-' . sha1(time() . mt_rand() . $this->Email);
-        }
-
-        if (empty($this->FirstName) && empty($this->Surname) && $this->Member()->exists()) {
-            $this->FirstName    =   $this->Member()->FirstName;
-            $this->Surname      =   $this->Member()->Surname;
+            $uuid = Uuid::uuid4();
+            $this->QRToken = 'rsvp:' . $uuid->toString();
         }
     }
 
     public function getTitle()
     {
-        if ($this->Member()->exists()) {
-            return $this->Member()->Title;
+        $fullname = $this->FullName;
+
+        if (!empty($fullname)) {
+            return $fullname;
         }
 
         if (!empty($this->Email)) {
@@ -172,7 +163,7 @@ class RSVP extends DataObject
         return $this->getTitle();
     }
 
-    public function get_portrait($s = 80, $d = 'mm', $r = 'g')
+    public function getPortrait($s = 80, $d = 'mm', $r = 'g')
     {
         $url    =   'https://www.gravatar.com/avatar/';
         $url    .=  md5( strtolower( trim( $this->Email ) ) );
@@ -183,12 +174,12 @@ class RSVP extends DataObject
         return $url;
     }
 
-    public function get_fullname()
+    public function getFullName()
     {
         return trim($this->FirstName . ' ' . $this->Surname);
     }
 
-    public function get_ical_string()
+    public function getiCalString()
     {
         if (!$this->Event()->exists()) return null;
 

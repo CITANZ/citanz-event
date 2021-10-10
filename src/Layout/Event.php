@@ -1,10 +1,13 @@
 <?php
 
-namespace Cita\Event\Layout;
+namespace Cita\Event\Page;
+
+use SilverStripe\Forms\TextareaField;
+use SilverStripe\Blog\Model\BlogPost;
+use Ramsey\Uuid\Uuid;
 use Cita\Event\Model\EventLocation;
 use gorriecoe\LinkField\LinkField;
 use gorriecoe\Link\Models\Link;
-use SilverStripe\Forms\TextareaField;
 use SilverStripe\Forms\HTMLEditor\HtmlEditorField;
 use SilverStripe\AssetAdmin\Forms\UploadField;
 use SilverStripe\Forms\CheckboxField;
@@ -14,35 +17,18 @@ use SilverStripe\Forms\DatetimeField;
 use SilverStripe\Assets\Image;
 use SilverShop\HasOneField\HasOneButtonField;
 use Cita\Event\Model\RSVP;
-use \SilverStripe\Forms\GridField\GridField;
-use \SilverStripe\Forms\GridField\GridFieldConfig_Base;
-use \SilverStripe\Forms\GridField\GridFieldConfig_RecordViewer;
-use \SilverStripe\Forms\GridField\GridFieldConfig_RecordEditor;
 use Bummzack\SortableFile\Forms\SortableUploadField;
-use Page;
+use SilverStripe\Forms\HTMLEditor\HTMLEditorConfig;
 
-/**
- * Description
- *
- * @package silverstripe
- * @subpackage mysite
- */
-class EventPage extends Page
+class Event extends BlogPost
 {
-    private static $icon = 'cita/citanz-event: client/img/event.png';
-    /**
-     * Defines the database table name
-     * @var string
-     */
-    private static $table_name = 'EventPage';
+    private static $table_name = 'Cita_Event';
+
+    private static $can_be_root = false;
+
     private static $description = 'Like the name says: an event Page :)';
 
-    /**
-     * Database fields
-     * @var array
-     */
     private static $db = [
-        'ShortDesc'     =>  'Text',
         'QRToken'       =>  'Varchar(40)',
         'EventVideo'    =>  'HTMLText',
         'EventStart'    =>  'Datetime',
@@ -52,29 +38,7 @@ class EventPage extends Page
         'MaxGuests'     =>  'Int'
     ];
 
-    /**
-     * Default sort ordering
-     * @var array
-     */
-    private static $default_sort = ['EventStart' => 'DESC'];
-
-    public function populateDefaults()
-    {
-        $this->QRToken  =   sha1(time() . mt_rand() . mt_rand());
-    }
-
-    private static $indexes = [
-        'QRToken'   =>  [
-            'type'  =>  'unique'
-        ]
-    ];
-
-    /**
-     * Has_one relationship
-     * @var array
-     */
     private static $has_one = [
-        'FeaturedImage' => Image::class,
         'Location' => EventLocation::class,
         'WebinarLink' => Link::class
     ];
@@ -85,7 +49,7 @@ class EventPage extends Page
      */
     private static $owns = [
         'FeaturedImage',
-        'EventPhotos'
+        'EventPhotos',
     ];
 
     /**
@@ -118,28 +82,42 @@ class EventPage extends Page
         ]
     ];
 
-    /**
-     * CMS Fields
-     * @return FieldList
-     */
+    public function populateDefaults()
+    {
+        parent::populateDefaults();
+
+        $uuid = Uuid::uuid4();
+        $this->QRToken = $uuid->toString();
+    }
+
+    public function onBeforeWrite()
+    {
+        parent::onBeforeWrite();
+
+        if (empty($this->QRToken)) {
+            $uuid = Uuid::uuid4();
+            $this->QRToken = $uuid->toString();
+        }
+    }
+
     public function getCMSFields()
     {
         $fields = parent::getCMSFields();
-        $fields->fieldByName('Root.Main.Title')->setDescription('QR Code: ' . $this->AbsoluteLink() . 'turnup/' . $this->QRToken);
+        $fields->insertBefore('Content', $fields->fieldByName('Root.Main.FeaturedImage'));
+
         $fields->removeByName([
-            'WebinarLinkID'
+            'CustomSummary',
         ]);
+
+        $fields->insertBefore(
+            'Content',
+            TextareaField::create('Summary')
+              ->setDescription('It will  be used in the iCal file attached to the RSVP confirmation email. If you don\'t know what that is, leave it blank.')
+        );
+
         $fields->addFieldsToTab(
-            'Root.Main',
+            'Root.EventDetails',
             [
-                TextareaField::create(
-                    'ShortDesc',
-                    'Short Description'
-                )->setDescription('It will  be used in the iCal file attached to the RSVP confirmation email. If you don\'t know what that is, leave it blank.'),
-                UploadField::create(
-                    'FeaturedImage',
-                    'FeaturedImage'
-                ),
                 DatetimeField::create(
                     'EventStart',
                     'Start'
@@ -159,60 +137,43 @@ class EventPage extends Page
                 TextField::create(
                     'MaxGuests',
                     'Max. number of guests can a RSVP bring'
-                ),
+                )->displayIf('AllowGuests')
+                  ->isChecked()
+                  ->end(),
                 HasOneButtonField::create($this, "Location"),
                 LinkField::create(
                     'WebinarLink',
                     'External Link',
                     $this
                 )->setDescription('e.g. a link going to the online webinar address')
-            ],
-            'URLSegment'
+            ]
         );
-
-        $fields->addFieldToTab(
-            'Root.RSVPs',
-            $gf = GridField::create('RSVPs', 'RSVPs', $this->RSVPs())
-        );
-
-        if (Member::currentUser() && Member::currentUser()->isDefaultadmin()) {
-            $gf->setConfig(GridFieldConfig_RecordEditor::create());
-        } else {
-            $gf->setConfig(GridFieldConfig_RecordViewer::create());
-        }
 
         $fields->addFieldsToTab(
-            'Root.EventGallery',
+            'Root.Gallery',
             [
-                SortableUploadField::create(
-                    'EventPhotos', 'Event photo gallery'
-                )->setDescription('Photos taken during the event'),
-                HtmlEditorField::create(
-                    'EventVideo',
-                    'Event Video'
-                )->setDescription('The video taken during the event')
+                HtmlEditorField::create('EventVideo', 'Vidoe')
+                    ->setEditorConfig(HTMLEditorConfig::get('video-only')),
+                SortableUploadField::create('EventPhotos', 'EventPhotos')
+                    ->setFolderName("event-{$this->QRToken}"),
             ]
         );
 
         return $fields;
     }
 
-    public function has_enough_seats($n, $rsvp)
+    public function hasEnoughSeats($n, $rsvp)
     {
-        return $this->AttendeeLimit - $this->get_total_attendee_count($rsvp) - $n >= 0;
+        return $this->AttendeeLimit - $this->getTotalAttendeeCount($rsvp) - $n >= 0;
     }
 
-    public function get_total_attendee_count($exclude = null)
+    public function getTotalAttendeeCount($exclude = null)
     {
         $n      =   0;
+        $rsvps  =   $this->RSVPs();
+
         if (!empty($exclude)) {
-            if ($exclude->exists()) {
-                $rsvps  =   $this->RSVPs()->exclude(['ID' => $exclude->ID]);
-            } else {
-                $rsvps  =   $this->RSVPs();
-            }
-        } else {
-            $rsvps  =   $this->RSVPs();
+            $rsvps  =   $rsvps->exclude(['ID' => $exclude->ID]);
         }
 
         foreach ($rsvps as $rsvp) {
@@ -222,7 +183,7 @@ class EventPage extends Page
         return $n;
     }
 
-    public function already_signed_up()
+    public function alreadySignedup()
     {
         if ($member = Member::currentUser()) {
             return $this->RSVPs()->filter(['MemberID' => $member->ID])->first();
