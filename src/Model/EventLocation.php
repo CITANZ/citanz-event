@@ -87,14 +87,16 @@ class EventLocation extends DataObject
 
         $geo = json_decode($this->Geometry);
 
-        if (!empty($geo->layers) &&
-            !empty($geo->layers[0]->geometry) &&
-            !empty($geo->layers[0]->geometry->coordinates)
-        ) {
-            $this->Lng = $geo->layers[0]->geometry->coordinates[0];
-            $this->Lat = $geo->layers[0]->geometry->coordinates[1];
-        }
+        if (!empty($geo)) {
+            if (!empty($geo->layers) &&
+                !empty($geo->layers[0]->geometry) &&
+                !empty($geo->layers[0]->geometry->coordinates)
+            ) {
+                $this->Lng = $geo->layers[0]->geometry->coordinates[0];
+                $this->Lat = $geo->layers[0]->geometry->coordinates[1];
+            }
 
-        $this->Zoom = $geo->zoom;
+            $this->Zoom = $geo->zoom;
+        }
     }
 }
